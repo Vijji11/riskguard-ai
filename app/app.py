@@ -2,10 +2,13 @@ import streamlit as st
 import pandas as pd
 import joblib
 import sys
+import shap
+import numpy as np
 
-# -----------------------------
-# Import project modules
-# -----------------------------
+
+# ============================================================
+# PROJECT IMPORTS
+# ============================================================
 
 sys.path.append("src")
 sys.path.append("agent")
@@ -14,11 +17,13 @@ from investigation import investigate_transaction
 from risk_agent import risk_agent
 
 
-# -----------------------------
-# Load model and scalers
-# -----------------------------
+# ============================================================
+# LOAD MODEL
+# ============================================================
 
-model = joblib.load("models/fraud_model.pkl")
+model = joblib.load(
+    "models/fraud_model.pkl"
+)
 
 time_scaler = joblib.load(
     "models/time_scaler.pkl"
@@ -29,18 +34,25 @@ amount_scaler = joblib.load(
 )
 
 
-# -----------------------------
-# Load dataset
-# -----------------------------
+# ============================================================
+# LOAD DATASET
+# ============================================================
 
 df = pd.read_csv(
     "data/creditcard.csv"
 )
 
 
-# -----------------------------
-# Page configuration
-# -----------------------------
+# ============================================================
+# SHAP EXPLAINER
+# ============================================================
+
+explainer = shap.TreeExplainer(model)
+
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
 
 st.set_page_config(
     page_title="RiskGuard AI",
@@ -49,9 +61,9 @@ st.set_page_config(
 )
 
 
-# -----------------------------
-# Header
-# -----------------------------
+# ============================================================
+# HEADER
+# ============================================================
 
 st.title("🛡️ RiskGuard AI")
 
@@ -60,16 +72,16 @@ st.subheader(
 )
 
 st.write(
-    "Analyze financial transactions and identify "
-    "potential fraud risk using machine learning, "
-    "risk analysis, and an AI decision engine."
+    "Analyze financial transactions, detect potential "
+    "fraud, calculate risk scores, investigate risk "
+    "factors, and receive recommended actions."
 )
 
 st.divider()
 
 
 # ============================================================
-# DASHBOARD METRICS
+# DATASET STATISTICS
 # ============================================================
 
 total_transactions = len(df)
@@ -79,18 +91,27 @@ fraud_transactions = int(
 )
 
 legitimate_transactions = (
-    total_transactions - fraud_transactions
+    total_transactions -
+    fraud_transactions
 )
 
 fraud_rate = (
-    fraud_transactions / total_transactions
+    fraud_transactions /
+    total_transactions
 ) * 100
 
+
+# ============================================================
+# TOP METRICS
+# ============================================================
+
+st.header("📊 Risk Overview")
 
 col1, col2, col3, col4 = st.columns(4)
 
 
 with col1:
+
     st.metric(
         "Total Transactions",
         f"{total_transactions:,}"
@@ -98,20 +119,23 @@ with col1:
 
 
 with col2:
+
     st.metric(
-        "Fraudulent Transactions",
+        "Fraudulent",
         f"{fraud_transactions:,}"
     )
 
 
 with col3:
+
     st.metric(
-        "Legitimate Transactions",
+        "Legitimate",
         f"{legitimate_transactions:,}"
     )
 
 
 with col4:
+
     st.metric(
         "Fraud Rate",
         f"{fraud_rate:.4f}%"
@@ -122,10 +146,10 @@ st.divider()
 
 
 # ============================================================
-# RISK ANALYTICS
+# ANALYTICS
 # ============================================================
 
-st.header("📊 Risk Analytics")
+st.header("📈 Transaction Analytics")
 
 
 col1, col2 = st.columns(2)
@@ -156,28 +180,31 @@ with col1:
 with col2:
 
     st.subheader(
-        "Fraud Detection Overview"
+        "Fraud Detection Statistics"
     )
 
     st.write(
-        f"**Total transactions:** "
-        f"{total_transactions:,}"
+        f"**Total:** {total_transactions:,}"
     )
 
     st.write(
-        f"**Fraudulent transactions:** "
-        f"{fraud_transactions:,}"
+        f"**Fraud:** {fraud_transactions:,}"
     )
 
     st.write(
-        f"**Fraud rate:** "
+        f"**Legitimate:** "
+        f"{legitimate_transactions:,}"
+    )
+
+    st.write(
+        f"**Fraud Rate:** "
         f"{fraud_rate:.4f}%"
     )
 
     st.info(
-        "The dataset is highly imbalanced because "
-        "fraudulent transactions represent only a "
-        "small percentage of all transactions."
+        "Fraud detection is challenging because "
+        "fraudulent transactions are extremely rare "
+        "compared with legitimate transactions."
     )
 
 
@@ -191,17 +218,66 @@ st.divider()
 st.header("🔍 Transaction Analysis")
 
 
-transaction_number = st.number_input(
-    "Enter Transaction Number",
-    min_value=0,
-    max_value=len(df) - 1,
-    value=0,
-    step=1
+selection_type = st.radio(
+    "Choose transaction selection method:",
+    [
+        "Transaction Number",
+        "Find Fraud Transaction",
+        "Find Legitimate Transaction"
+    ],
+    horizontal=True
 )
 
 
-selected_transaction = df.iloc[
-    transaction_number
+# ============================================================
+# TRANSACTION SELECTION
+# ============================================================
+
+if selection_type == "Transaction Number":
+
+    selected_index = st.number_input(
+        "Enter Transaction Number",
+        min_value=0,
+        max_value=len(df) - 1,
+        value=0,
+        step=1
+    )
+
+    selected_index = int(
+        selected_index
+    )
+
+
+elif selection_type == "Find Fraud Transaction":
+
+    fraud_indices = (
+        df[df["Class"] == 1]
+        .index
+        .tolist()
+    )
+
+    selected_index = st.selectbox(
+        "Select Fraud Transaction",
+        fraud_indices
+    )
+
+
+else:
+
+    legitimate_indices = (
+        df[df["Class"] == 0]
+        .index
+        .tolist()
+    )
+
+    selected_index = st.selectbox(
+        "Select Legitimate Transaction",
+        legitimate_indices
+    )
+
+
+selected_transaction = df.loc[
+    selected_index
 ]
 
 
@@ -209,7 +285,9 @@ selected_transaction = df.iloc[
 # TRANSACTION DETAILS
 # ============================================================
 
-st.write("### Transaction Details")
+st.subheader(
+    "Transaction Details"
+)
 
 
 col1, col2, col3 = st.columns(3)
@@ -218,8 +296,8 @@ col1, col2, col3 = st.columns(3)
 with col1:
 
     st.write(
-        f"**Transaction Number:** "
-        f"{transaction_number}"
+        f"**Transaction:** "
+        f"{selected_index}"
     )
 
 
@@ -243,14 +321,17 @@ with col3:
 # ANALYZE BUTTON
 # ============================================================
 
-if st.button(
+analyze = st.button(
     "🔍 Analyze Transaction",
     use_container_width=True
-):
+)
 
-    # --------------------------------------------------------
-    # Create transaction dictionary
-    # --------------------------------------------------------
+
+if analyze:
+
+    # ========================================================
+    # CREATE TRANSACTION
+    # ========================================================
 
     transaction = (
         selected_transaction
@@ -259,9 +340,9 @@ if st.button(
     )
 
 
-    # --------------------------------------------------------
-    # Prepare transaction
-    # --------------------------------------------------------
+    # ========================================================
+    # PREPARE DATA
+    # ========================================================
 
     transaction_df = pd.DataFrame(
         [transaction]
@@ -286,9 +367,9 @@ if st.button(
     )
 
 
-    # --------------------------------------------------------
-    # ML Prediction
-    # --------------------------------------------------------
+    # ========================================================
+    # MACHINE LEARNING PREDICTION
+    # ========================================================
 
     fraud_probability = (
         model.predict_proba(
@@ -303,9 +384,9 @@ if st.button(
     )
 
 
-    # --------------------------------------------------------
-    # Risk Level
-    # --------------------------------------------------------
+    # ========================================================
+    # RISK CLASSIFICATION
+    # ========================================================
 
     if risk_score <= 30:
 
@@ -317,6 +398,7 @@ if st.button(
             "Transaction appears safe."
         )
 
+
     elif risk_score <= 70:
 
         risk_level = "MEDIUM"
@@ -327,6 +409,7 @@ if st.button(
             "Additional verification "
             "is recommended."
         )
+
 
     else:
 
@@ -379,11 +462,11 @@ if st.button(
 
 
     # ========================================================
-    # RISK SCORE VISUALIZATION
+    # RISK BAR
     # ========================================================
 
     st.subheader(
-        "Risk Score Visualization"
+        "Risk Level"
     )
 
     st.progress(
@@ -425,7 +508,7 @@ if st.button(
 
 
     # ========================================================
-    # AI RISK INVESTIGATION
+    # AI INVESTIGATION
     # ========================================================
 
     st.divider()
@@ -467,7 +550,7 @@ if st.button(
 
 
     # ========================================================
-    # AI RISK AGENT
+    # RISKGUARD AI AGENT
     # ========================================================
 
     st.divider()
@@ -513,6 +596,123 @@ if st.button(
     st.info(
         agent_result["explanation"]
     )
+
+
+    # ========================================================
+    # SHAP EXPLANATION
+    # ========================================================
+
+    st.divider()
+
+    st.subheader(
+        "🔎 Why did RiskGuard make this decision?"
+    )
+
+
+    st.write(
+        "These model features had the strongest "
+        "influence on the prediction:"
+    )
+
+
+    # Calculate SHAP values
+
+    shap_values = explainer.shap_values(
+        transaction_df
+    )
+
+
+    shap_values = np.asarray(
+        shap_values
+    )
+
+
+    # Handle SHAP versions
+
+    if shap_values.ndim == 3:
+
+        feature_impacts = (
+            shap_values[0, :, 1]
+        )
+
+    elif shap_values.ndim == 2:
+
+        feature_impacts = (
+            shap_values[0]
+        )
+
+    elif shap_values.ndim == 1:
+
+        feature_impacts = (
+            shap_values
+        )
+
+    else:
+
+        st.error(
+            "Unexpected SHAP output format."
+        )
+
+        feature_impacts = np.zeros(
+            len(transaction_df.columns)
+        )
+
+
+    # Make sure lengths match
+
+    if len(feature_impacts) == len(
+        transaction_df.columns
+    ):
+
+        explanation_df = pd.DataFrame({
+
+            "Feature":
+                transaction_df.columns,
+
+            "Impact":
+                feature_impacts
+
+        })
+
+
+        explanation_df[
+            "Absolute Impact"
+        ] = (
+            explanation_df[
+                "Impact"
+            ].abs()
+        )
+
+
+        top_features = (
+            explanation_df
+            .sort_values(
+                "Absolute Impact",
+                ascending=False
+            )
+            .head(5)
+        )
+
+
+        for _, row in (
+            top_features.iterrows()
+        ):
+
+            if row["Impact"] > 0:
+
+                st.write(
+                    f"🔴 **{row['Feature']}** "
+                    f"increased fraud risk "
+                    f"({row['Impact']:.4f})"
+                )
+
+            else:
+
+                st.write(
+                    f"🟢 **{row['Feature']}** "
+                    f"reduced fraud risk "
+                    f"({row['Impact']:.4f})"
+                )
 
 
     # ========================================================
@@ -564,6 +764,7 @@ if st.button(
             "as FRAUD in the dataset."
         )
 
+
     else:
 
         st.success(
@@ -573,7 +774,7 @@ if st.button(
 
 
     # ========================================================
-    # MODEL INTERPRETATION
+    # RISK INTERPRETATION
     # ========================================================
 
     st.divider()
